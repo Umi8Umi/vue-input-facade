@@ -25,6 +25,13 @@ export default {
   name: 'InputFacade',
   props: {
     /**
+     * Whether or not to allow the user to type additional characters
+     */
+    allowAnyChars: {
+      type: Boolean,
+      default: false
+    },
+    /**
      * A function to format the value after applying the mask. The function will receive an
      * object with the masked and unmasked value. The result of this function will determine
      * what happens with the value.
@@ -115,7 +122,8 @@ export default {
         tokens: this.tokens,
         formatter: this.formatter,
         prefill: this.prefill,
-        short: this.short
+        short: this.short,
+        allowAnyChars: this.allowAnyChars
       }
     },
     emittedValue() {

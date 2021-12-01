@@ -70,11 +70,14 @@ export function inputHandler(event) {
   const { oldValue } = target[CONFIG_KEY]
 
   updateValue(target, null, { emit: false }, event)
-  updateCursor(event, originalValue, originalPosition)
 
   if (oldValue !== target.value) {
     target.dispatchEvent(FacadeInputEvent())
   }
+
+  setTimeout(function() {
+    updateCursor(event, originalValue, originalPosition)
+  }, 0)
 }
 
 /**
@@ -90,8 +93,7 @@ export function updateCursor(event, originalValue, originalPosition) {
   // setSelectionRange applies only to inputs of types text, search, URL, tel and password.
   // https://developer.mozilla.org/en-US/docs/Web/API/HTMLInputElement/setSelectionRange
   const supportedInputType = ['text', 'tel', 'search', null].includes(target.getAttribute('type'))
-  const config = target[CONFIG_KEY] && target[CONFIG_KEY].config
-  if (target !== document.activeElement || !supportedInputType || !config.mask) {
+  if (target !== document.activeElement || !supportedInputType) {
     return
   }
 
@@ -101,17 +103,40 @@ export function updateCursor(event, originalValue, originalPosition) {
   // get some information about the cursor based on the original value
   const isInsertEvent = ['insertText', 'insertFromPaste'].includes(inputType)
   const wasCursorAtEnd = isInsertEvent && originalPosition == originalValue.length
-  let lastInsertedChar = isInsertEvent && originalValue[originalPosition - 1]
+  let lastInsertedChar = originalValue[originalPosition - 1] ? originalValue[originalPosition - 1] : false
 
-  const newValue = target.value.toLocaleLowerCase()
+  const newValue = target.value ? target.value.toLocaleLowerCase() : target.value
 
   // set the cursor position to an appropriate location
   let cursorPosition = originalPosition
-  if (wasCursorAtEnd) {
+
+  const specialChars = /[()\- \s]/g
+  let newValAccumulators = newValue.match(specialChars)
+  let oldValAccumulators = originalValue.match(specialChars)
+  let oldValSubstringAccumulators = originalValue.substring(0, originalPosition).match(specialChars)
+  let newValAccumulatorsLen = newValAccumulators ? newValAccumulators.length : 0
+  let oldValAccumulatorsLen = oldValAccumulators ? oldValAccumulators.length : 0
+
+  if (wasCursorAtEnd || !newValue) {
     cursorPosition = newValue.length
+  } else if (newValAccumulatorsLen && !oldValAccumulatorsLen) {
+    let newPosition = 1
+    // increment until find cursor position skipping over mask chars
+    while (newPosition <= cursorPosition) {
+      if (newValue.charAt(newPosition - 1).match(specialChars)) {
+        cursorPosition++
+      }
+      newPosition++
+    }
+    cursorPosition = newPosition - 1
+  } else if (!newValAccumulatorsLen && oldValAccumulatorsLen && oldValSubstringAccumulators) {
+    lastInsertedChar = lastInsertedChar.toLocaleLowerCase()
+    oldValAccumulatorsLen = oldValSubstringAccumulators ? oldValSubstringAccumulators.length : 0
+    let newPosition = cursorPosition - oldValAccumulatorsLen
+    // if we didnt find the digit must be an unacceptable char, leave the cursor where it was
+    cursorPosition = newPosition
   } else if (lastInsertedChar) {
     lastInsertedChar = lastInsertedChar.toLocaleLowerCase()
-
     let newPosition = cursorPosition
     // if the last inserted char was changed, increment position until find it again
     while (newPosition <= newValue.length && newValue.charAt(newPosition - 1) !== lastInsertedChar) {

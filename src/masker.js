@@ -58,9 +58,10 @@ export function dynamic(inputValue, config) {
  * @param {object} config.tokens the tokens to add/override to the global
  * @param {boolean} config.prefill whether or not to add masking characters to the input before the user types
  * @param {boolean} config.short to keep the string as short as possible (not append extra chars at the end)
+ * @param {boolean} config.allowAnyChars whether or not to allow the user to type additional characters
  */
 export function formatter(value, config) {
-  let { mask = '', tokens, prefill = false, short = false } = config
+  let { mask = '', tokens, prefill = false, short = false, allowAnyChars = false } = config
 
   // append/override global tokens instead of complete override
   tokens = tokens ? Object.assign({}, tokenDefinitions, tokens) : tokenDefinitions
@@ -95,7 +96,10 @@ export function formatter(value, config) {
 
         accumulator = ''
         maskIndex++
+      } else if (allowAnyChars) {
+        break
       }
+
       valueIndex++
     } else {
       accumulator += maskChar
@@ -114,9 +118,20 @@ export function formatter(value, config) {
     }
   }
 
-  // if there is no unmasked value, set masked to empty to avoid showing masking
-  // characters in an otherwise empty input, unless prefill is set ot true
-  if ((prefill && !output.unmasked) || (!short && output.unmasked)) {
+  if (allowAnyChars && valueIndex < value.length) {
+    const specialChars = /[()\- \s]/g
+    let valueSubstring = value.match(/[^()\- \s0-9]/g)
+      ? value.substring(valueIndex).replace(specialChars, '')
+      : value.substring(valueIndex)
+
+    const fullInput = output.unmasked + valueSubstring
+    output = {
+      masked: fullInput,
+      unmasked: fullInput
+    }
+  } else if ((prefill && !output.unmasked) || (!short && output.unmasked)) {
+    // if there is no unmasked value, set masked to empty to avoid showing masking
+    // characters in an otherwise empty input, unless prefill is set to true
     output.masked += accumulator
   }
 

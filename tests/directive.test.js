@@ -1,14 +1,15 @@
 import facade from '../src/directive'
 import { CONFIG_KEY } from '../src/core'
+import InputFacade from '../src/component'
 import { shallowMount } from '@vue/test-utils'
 
 describe('Directive', () => {
   let wrapper
   const inputListener = jest.fn()
 
-  const buildWrapper = ({ template, mask = '##.##', modifiers, value = '', ...rest } = {}) => {
+  const buildWrapper = ({ template, mask = '##.##', modifiers, type = 'text', value = '', ...rest } = {}) => {
     const directive = modifiers ? `v-facade.${modifiers}` : 'v-facade'
-    if (!template) template = `<input ${directive}="mask" value="${value}" @input="inputListener" />`
+    if (!template) template = `<input ${directive}="mask" type="${type}" value="${value}" @input="inputListener" />`
 
     const component = {
       template,
@@ -137,9 +138,15 @@ describe('Directive', () => {
   })
 
   describe.each([['insertText'], [undefined]])('Cursor updates (inputType = %s)', (inputType) => {
+    const createWrapper = (props) =>
+      shallowMount(InputFacade, {
+        propsData: props,
+        attachToDocument: true
+      })
     let element
 
     beforeEach(() => {
+      jest.useFakeTimers()
       buildWrapper({ mask: 'AAA-###-', attachToDocument: true })
 
       element = wrapper.element
@@ -148,60 +155,129 @@ describe('Directive', () => {
       element.focus()
     })
 
+    afterEach(async () => {
+      jest.useRealTimers()
+    })
+
     // We are using a pipe "|" to visualize where the cursor is
-    test('Should stay next to the char just inserted', () => {
+    test('Should stay next to the char just inserted when adding mask', () => {
       element.value = 'ABC1|23'
       const cursorPos = element.value.indexOf('|')
-      const newCursorPos = cursorPos + 1 // one new char inserted before
+      const newCursorPos = cursorPos + 1 // one new char after masking
 
       element.selectionEnd = cursorPos
       wrapper.find('input').trigger('input', { inputType })
+      jest.runAllTimers()
 
       expect(wrapper.element.setSelectionRange).toBeCalledWith(newCursorPos, newCursorPos)
     })
 
-    test('Should stay next to the char just inserted', () => {
-      element.value = 'ABC1|23'
-      const cursorPos = element.value.indexOf('|')
-      const newCursorPos = cursorPos + 1 // one new char inserted before
-
-      element.selectionEnd = cursorPos
-      wrapper.find('input').trigger('input', { inputType })
-
-      expect(wrapper.element.setSelectionRange).toBeCalledWith(newCursorPos, newCursorPos)
-    })
-
-    test('Should remain at the end if adding new char at the end', async () => {
+    test('Should remain at the end if adding new char at the end', () => {
       element.value = 'ABC123'
       const cursorPos = element.value.length
       const newCursorPos = cursorPos + 2 // two new characters after masking
 
       element.selectionEnd = cursorPos
       wrapper.find('input').trigger('input', { inputType })
+      jest.runAllTimers()
 
       expect(wrapper.element.setSelectionRange).toBeCalledWith(newCursorPos, newCursorPos)
     })
 
-    test('Should keep cursor at its current position when entering a bad char', async () => {
+    test('Should remain at the end if value is empty string', () => {
+      element.value = ''
+      const cursorPos = element.value.length
+
+      element.selectionEnd = cursorPos
+      wrapper.find('input').trigger('input', { inputType })
+      jest.runAllTimers()
+
+      expect(wrapper.element.setSelectionRange).toBeCalledWith(cursorPos, cursorPos)
+    })
+
+    test('Should keep cursor at its current position when entering a bad char', () => {
       element.value = 'ABC-1J|2'
       const cursorPos = element.value.indexOf('|')
       const newCursorPos = cursorPos - 1 // needs to move back as 'j' is not an allowed char
 
       element.selectionEnd = cursorPos
       wrapper.find('input').trigger('input', { inputType })
+      jest.runAllTimers()
 
       expect(wrapper.element.setSelectionRange).toBeCalledWith(newCursorPos, newCursorPos)
     })
 
-    test('should not reset cursor if no mask is given', async () => {
-      buildWrapper({ mask: '', attachToDocument: true })
+    test('Should keep cursor at its current position when changing to unmasked input', async () => {
+      const value = 'ABC-12|3-4'
+      const mask = 'AAA-###-'
+      const wrapperComponent = createWrapper({ value, mask })
+
+      await wrapperComponent.setProps({ allowAnyChars: true })
+
+      element = wrapperComponent.find('input').vm.$el
+      jest.spyOn(element, 'setSelectionRange')
+      element.focus()
+      const cursorPos = value.indexOf('|')
+      const newCursorPos = cursorPos - 1 // needs to move back one char when the mask is removed
+
+      element.value = 'ABC-123-4'
+      element.selectionEnd = cursorPos
+      wrapperComponent.find('input').trigger('input', { inputType })
+      jest.runAllTimers()
+
+      expect(wrapperComponent.element.setSelectionRange).toBeCalledWith(newCursorPos, newCursorPos)
+    })
+
+    test('Should keep cursor at its current position when non mask char is typed', async () => {
+      const value = 'ABC-1|'
+      const mask = 'AAA-###-'
+      const wrapperComponent = createWrapper({ value, mask })
+
+      await wrapperComponent.setProps({ allowAnyChars: true })
+
+      element = wrapperComponent.find('input').vm.$el
+      jest.spyOn(element, 'setSelectionRange')
+      element.focus()
+      const cursorPos = value.indexOf('|')
+      const newCursorPos = cursorPos - 1 // needs to move back one char when the mask is removed
+
+      element.value = 'ABC-1a'
+      element.selectionEnd = cursorPos
+      wrapperComponent.find('input').trigger('input', { inputType })
+      jest.runAllTimers()
+
+      expect(wrapperComponent.element.setSelectionRange).toBeCalledWith(newCursorPos, newCursorPos)
+    })
+
+    test('Should keep cursor at its current position when changing to unmasked input on backspace', async () => {
+      const value = 'ABC-12|3-4'
+      const mask = 'AAA-###-'
+      const wrapperComponent = createWrapper({ value, mask })
+
+      await wrapperComponent.setProps({ allowAnyChars: true })
+
+      element = wrapperComponent.find('input').vm.$el
+      jest.spyOn(element, 'setSelectionRange')
+      element.focus()
+      const cursorPos = value.indexOf('|')
+      const newCursorPos = cursorPos - 1 // needs to move back one char when the mask is removed
+
+      element.value = 'ABC-123-4'
+      element.selectionEnd = cursorPos
+      wrapperComponent.find('input').trigger('input', { inputType: 'deleteContentBackward' })
+      jest.runAllTimers()
+
+      expect(wrapperComponent.element.setSelectionRange).toBeCalledWith(newCursorPos, newCursorPos)
+    })
+
+    test('should not reset cursor if input type is not supported', () => {
+      buildWrapper({ type: 'number', mask: 'AAA-###-', attachToDocument: true })
       element = wrapper.element
       jest.spyOn(element, 'setSelectionRange')
       element.focus()
-      element.value = 'ABC-1J|2'
-      const cursorPos = element.value.indexOf('|')
-      element.selectionEnd = cursorPos
-      wrapper.find('input').trigger('input', { inputType })
+      element.value = 123
+      wrapper.find('input').trigger('input')
+      jest.runAllTimers()
       expect(wrapper.element.setSelectionRange).not.toBeCalled()
     })
   })
