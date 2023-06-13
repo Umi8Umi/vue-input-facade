@@ -55,6 +55,7 @@ export function getInputElement(el) {
  */
 export function inputHandler(event) {
   const { target, detail, inputType } = event
+  const { config } = target[CONFIG_KEY]
 
   // We dont need to run this method on the event we emit (prevent event loop)
   if (detail?.facade) {
@@ -67,7 +68,7 @@ export function inputHandler(event) {
 
   // Ignore input events related to composition, specific composition
   // events will handle updating the input after text is composed
-  if (['insertCompositionText', 'insertFromComposition'].includes(inputType)) {
+  if (['insertCompositionText', 'insertFromComposition'].includes(inputType) && config.mask) {
     return false
   }
 
@@ -148,7 +149,7 @@ export function updateValue(el, vnode, { emit = true, force = false } = {}, even
   let currentValue = vnode?.data?.model?.value || el.value
 
   // manipulating input value while text is being composed can lead to inputs being duplicated
-  if (isComposing) {
+  if (config.mask && isComposing) {
     return
   }
 
